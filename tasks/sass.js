@@ -10,6 +10,7 @@ var path = require('path');
 var dargs = require('dargs');
 var numCPUs = require('os').cpus().length;
 var async = require('async');
+var spawn = require('win-spawn');
 
 module.exports = function (grunt) {
   var bannerCallback = function (filename, banner) {
@@ -57,12 +58,6 @@ module.exports = function (grunt) {
         '--load-path', path.dirname(src)
       ].concat(passedArgs);
 
-      if (process.platform === 'win32') {
-        args.unshift('sass.bat');
-      } else {
-        args.unshift('sass');
-      }
-
       if (bundleExec) {
         args.unshift('bundle', 'exec');
       }
@@ -75,13 +70,13 @@ module.exports = function (grunt) {
       // Make sure grunt creates the destination folders
       grunt.file.write(file.dest, '');
 
-      grunt.util.spawn({
-        cmd: args.shift(),
-        args: args,
-        opts: {
-          stdio: 'inherit'
-        }
-      }, function (error, result, code) {
+      var cp = spawn('sass', args, {stdio: 'inherit'});
+
+      cp.on('error', function (err) {
+        grunt.warn(err);
+      });
+
+      cp.on('close', function (code) {
         if (code === 127) {
           return grunt.warn(
             'You need to have Ruby and Sass installed and in your PATH for\n' +
@@ -90,13 +85,17 @@ module.exports = function (grunt) {
           );
         }
 
+        if (code > 0) {
+          return grunt.warn('Exited with error code ' + code);
+        }
+
         // Callback to insert banner
         if (banner) {
           bannerCallback(file.dest, banner);
         }
 
         grunt.log.writeln('File "' + file.dest + '" created.');
-        next(error);
+        next();
       });
     }, cb);
   });
